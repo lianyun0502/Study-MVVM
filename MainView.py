@@ -1,9 +1,9 @@
-from View.View import View, isTask
-from typing import Optional, Dict, Tuple
+from View import BaseView, PlugInView, isFragment, PlugInViewInfo
+from typing import Optional
 from PySide6 import QtCore,QtGui,QtWidgets
-from MainViewModel import AppViewModel, AppModelSentinel, UIState, CounterModel, ViewModelMediator
+from MainViewModel import AppViewModel, CounterModel, ViewModelEventMediator
 
-class AppView(View):
+class AppView(PlugInView):
     view_model:Optional[AppViewModel]=None
     def __init__(self, name:str, view_model:AppViewModel):
         super().__init__(name=name, view_model=view_model)
@@ -13,8 +13,8 @@ class AppView(View):
         self.view_model.sentinel.sig_setPlugin.connect(self.getPluginNotify)
         self.view_model.sentinel.sig_message.connect(self.getMessage)
         self.view_model.sentinel.sig_selectPlugin.connect(self.getSelectPlugin)
-        for name, plug_in in self.plugin_views.items():
-            plug_in.run()
+        for name, plug_in_view in self.plugin_views.items():
+            plug_in_view.view.run()
 
     def _disconnectSentinel(self):
         super()._disconnectSentinel()
@@ -54,6 +54,7 @@ class AppView(View):
     def PB_clickSetSetting(self):
         self.view_model.setSetting(self.ccb_plugin.currentText(), self.el_ID.text())
 
+    @isFragment()
     def getModelState(self, view_model:AppViewModel) ->None:
         if view_model.is_connect:
             self.pb_connect.setText('Disconnect')
@@ -65,14 +66,15 @@ class AppView(View):
         self.el_ID.setEnabled(view_model.is_connect)
         self.pb_set_setting.setEnabled(view_model.is_connect)
 
+    @isFragment()
     def getPluginNotify(self, view_model:AppViewModel)->None:
         self.ccb_plugin.clear()
         self.ccb_plugin.addItems(tuple(view_model.plugins.keys()))
 
     def getSelectPlugin(self, plugin:str)->None:
-        self.stack.setCurrentWidget(self.plugin_views[plugin].wg)
+        self.stack.setCurrentWidget(self.plugin_views[plugin].view.wg)
 
-    def _addPluginToLayout(self, view:View):
+    def _addPluginToLayout(self, view:BaseView):
         wg = QtWidgets.QWidget()
         self.stack.addWidget(wg)
         view.setupUI(wg=wg)
@@ -83,7 +85,7 @@ class AppView(View):
         return
 
 
-class Counter(View):
+class Counter(BaseView):
     view_model:Optional[CounterModel]=None
     def __init__(self, name, view_model:CounterModel):
         super().__init__(name=name, view_model=view_model)
@@ -103,12 +105,15 @@ class Counter(View):
         self.pb_plus.clicked.connect(self.view_model.plusOne)
         self.pb_minus.clicked.connect(self.view_model.minusOne)
 
+    @isFragment()
     def getModelState(self, view_model:CounterModel) ->None:
         self.lb_number.setText(f'Current Number : {view_model.current_number}')
         self.wg.setEnabled(view_model.is_enable)
         return
 
-    def _addPluginToLayout(self, view: View) ->None:...
+    def _addPluginToLayout(self, view_info: PlugInViewInfo) ->None:...
+
+
 
 
 
@@ -123,7 +128,7 @@ if __name__ == "__main__":
     window.resize(600,100)
     widget = QtWidgets.QWidget()
 
-    mediator = ViewModelMediator()
+    mediator = ViewModelEventMediator()
 
     app_model = AppViewModel('Main', mediator)
     counter_model = CounterModel('Counter', mediator)
@@ -140,7 +145,6 @@ if __name__ == "__main__":
     AppView.run()
 
     app_model.render()
-
 
     window.setCentralWidget(widget)
     window.show()

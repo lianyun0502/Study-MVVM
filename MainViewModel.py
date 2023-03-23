@@ -1,14 +1,7 @@
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
-# Copyright (C) 2022 The Qt Company Ltd.
-# SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
-import sys
-import attrs
 import inspect
-import logging
-from typing import Optional, Dict
-from PySide6 import QtCore,QtGui,QtWidgets
-from ViewModel.ViewModel import ViewModel, ModelSentinel, Repository, ViewModelMediator, isHandler, log
+from PySide6 import QtCore, QtGui, QtWidgets
+from ViewModel import ViewModel, ModelSentinel, Repository, ViewModelEventMediator, isHandler
+from ViewModel.Logger import log
 import View.View as SETTING_PROCESS
 
 
@@ -41,13 +34,11 @@ class AppViewModel(ViewModel):
         self._state._is_set = is_set
         self.sentinel.sig_state.emit(self)
 
-    def __init__(self, name:str, mediator:ViewModelMediator):
-        super().__init__(name=name)
+    def __init__(self, name:str, mediator:ViewModelEventMediator):
+        super().__init__(name=name, mediator=mediator)
         self.sentinel = AppModelSentinel()
         self._state = UIState()
-        self.mediator = mediator
         self.mediator.register('changed_Connect', self.ConnectState)
-        # self.plugins:Dict[str,int] = {'..':0 ,'eric':1, 'wayne':2, 'harry':3}
 
     def render(self):
         self.mediator.trigger('changed_Connect', self.is_connect)
@@ -97,6 +88,10 @@ class AppViewModel(ViewModel):
         if is_connect != self.is_connect:
             self.is_connect = is_connect
 
+
+
+
+
 class CounterModel(ViewModel):
     @property
     def current_number(self)->int:
@@ -119,10 +114,9 @@ class CounterModel(ViewModel):
         self._enable = is_enable
         self.sentinel.sig_state.emit(self)
 
-    def __init__(self, name:str, mediator:ViewModelMediator):
-        super().__init__(name=name)
+    def __init__(self, name:str, mediator:ViewModelEventMediator):
+        super().__init__(name=name, mediator=mediator)
         self.sentinel = AppModelSentinel()
-        self.mediator = mediator
         self.mediator.register('changed_Connect', self.setViewEnable)
         self._current_number=0
         self._enable = True
@@ -144,15 +138,53 @@ class CounterModel(ViewModel):
         if self.is_enable != is_connect:
             self.is_enable = is_connect
 
+class SettingModel(ViewModel):
+    @property
+    def is_set(self):
+        return self._is_set
+    @is_set.setter
+    def is_set(self, is_set: bool):
+        self._is_set = is_set
+        self._setting = None
+        self.sentinel.sig_state.emit(self)
+    def __init__(self, name: str, mediator: ViewModelEventMediator):
+        super().__init__(name=name, mediator=mediator)
+        self.sentinel = AppModelSentinel()
+        self._is_set = False
+    def render(self):
+        self.sentinel.sig_state.emit(self)
 
+    def setSetting(self)->None:
+        if self._setting == '':
+            self.sentinel.sig_message.emit(f'Your setting is empty!')
+            return
 
+        log.info(f'Set Setting : {self._setting}')
+        self.is_set = True
+
+    def changeSetting(self, setting:str)->None:
+        log.info(f'Setting changed')
+        self._setting = setting
 
 
 
 if __name__ == '__main__':
-    app = AppViewModel()
-    app.connectDevice()
-    app.modifySettingConfigs('View', 'a', 123)
+    def test_AppViewModel():
+        mediator = ViewModelEventMediator()
+        app = AppViewModel(name='test', mediator=mediator)
+        app.connectDevice()
+        # app.modifySettingConfigs('View', 'a', 123)
+
+    def test_SettingModel():
+        mediator = ViewModelEventMediator()
+        app = SettingModel(name='test', mediator=mediator)
+        app.changeSetting('123')
+        app.setSetting()
+        app.changeSetting('456')
+        app.setSetting()
+
+    test_AppViewModel()
+
 
 
 

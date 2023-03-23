@@ -1,43 +1,13 @@
 from __future__ import annotations
-
 import abc
-import gc
 import typing
-from typing import List, Dict, Any, Callable
+from typing import List, Dict, Any, Callable, Optional
 from attrs import define
 from PySide6 import QtWidgets, QtCore
 from functools import wraps
-import logging
+from ViewModel.Logger import log
 
-log = logging.getLogger('ViewModel')
-log.setLevel(logging.INFO)
-handler = logging.StreamHandler()
-
-class CustomFormatter(logging.Formatter):
-    normal = '\x1b[20;1m'
-    white = '\x1b[49;1m'
-    green = '\x1b[32;1m'
-    yellow = '\x1b[33;1m'
-    Magenta = '\x1b[35;1m'
-    red = '\x1b[31;1m'
-    reset = '\x1b[0m'
-    def __init__(self, fmt="%(asctime)s | %(name)-10s| %(levelname)-8s|: %(message)s"):
-        super().__init__(fmt)
-        self.fmt = fmt
-        self.FORMATS = {
-            logging.DEBUG: f"{self.green} {self.fmt} {self.reset}",
-            logging.INFO: f"{self.white} {self.fmt} {self.reset}",
-            logging.WARNING: f"{self.yellow} {self.fmt} {self.reset}",
-            logging.ERROR: f"{self.Magenta} {self.fmt} {self.reset}",
-            logging.CRITICAL: f"{self.red} {self.fmt} {self.reset}"
-        }
-
-    def format(self, record):
-        log_fmt = self.FORMATS.get(record.levelno)
-        formatter = logging.Formatter(log_fmt)
-        return formatter.format(record)
-handler.setFormatter(CustomFormatter())
-log.addHandler(handler)
+from ViewModel.ViewModelMediator import ViewModelEventMediator
 
 @define
 class Task():
@@ -45,12 +15,12 @@ class Task():
     func:str = None
     args:typing.Tuple = None
 
-# 定義一個可銷毀的handler物件
 def isHandler():
+    '''定義一個的handler物件，用於訂閱 ViewModelMediator類別的通知.'''
     def decorator(func):
         @wraps(func)
         def wrap(self, *args, **kwargs):
-            log.info(f'Trigger handler {func.__name__}')
+            log.debug(f'Trigger handler {func.__name__}')
             if not isinstance(self, object):
                 return None
             func(self, *args, **kwargs)
@@ -58,36 +28,11 @@ def isHandler():
         return wrap
     return decorator
 
-class ViewModelMediator: ## handler無法回收
-    '''
-    View Model 仲介類別
-    負責 View Model間的通信。
-    '''
-    def __init__(self):
-        self._events:dict[str, set[Callable[..., Any]]] = {}
-
-    # 註冊事件
-    def register(self, event_name:str, handler:Callable[..., Any]):
-        if event_name not in self._events:
-            self._events[event_name] = set([])
-        self._events[event_name].add(handler)
-
-    def unregister(self, event_name:str, handler:Callable[..., Any]):
-        if event_name not in self._events:
-            return
-        self._events[event_name].remove(handler)
-
-    # 觸發事件
-    def trigger(self, event_name:str, *args, **kwargs):
-        assert self._events.get(event_name) is not None
-        for handler in self._events[event_name]:
-            handler(*args, **kwargs)
-
 
 class ModelSentinel(QtCore.QObject):
     '''
     哨兵類別
-    負責廣播當 ViewModel 狀態改變時 view 上 function 的訂閱者要改變狀態。
+    負責廣播當 ViewModel 狀態或屬性改變時，負責通知 View 類別執行 fragment。
     '''
     sig_task = QtCore.Signal(Task)
     sig_notify = QtCore.Signal(object)
@@ -102,50 +47,62 @@ class Repository:
     '''
     ...
 
-
 class ViewModel():
     '''
     View model 類別
     負責紀錄 view 的狀態及顯示邏輯，以及提供 Domain model 的使用介面。
     '''
     sentinel = ModelSentinel()
-    def __init__(self, name:str):
+    def __init__(self, name:str, mediator:ViewModelEventMediator):
         self.name = name
+        self.mediator = mediator
         self.plugins:Dict[str, ViewModel] = {}
 
     @abc.abstractmethod
-    def render(self):...
+    def render(self)->None:
+        '''
+        渲染 View 的抽象介面
+        '''
+        ...
 
-
-    def addPlugin(self, name:str, plugin:ViewModel):
+    def addPlugin(self, name:str, plugin:ViewModel)->None:
+        '''加入 plugin 的view model進行管理'''
         self.plugins.update({name:plugin})
         return
 
+class Results(typing.Protocol):
+    '''Class Results's interface.'''
+    ...
+
+class FiniteReceiveMachine(typing.Protocol):
+    '''Class Results's interface.'''
+    def trigger(self,**kwargs)->None:...
+
+    def pause(self)->None:...
+
+    def stop(self)->None:...
+
+class ViewModelUpdater(ViewModel):
+    '''此類別為 ViewModel 的子類別，用於需要使用FiniteReceiveMachine的類別。'''
+    def __init__(self, name: str, mediator: ViewModelEventMediator):
+        super().__init__(name=name, mediator=mediator)
+        self.FRM:Optional[FiniteReceiveMachine] = None
+    @abc.abstractmethod
+    def update(self, results:Results)->None:
+        '''
+        接取來自 FRM 類別的推送(Results類別)，並發起來自 Receiver 資料更新的通知。
+        '''
+        ...
+    def startFRM(self)->None:...
+
+    def stopFRM(self)->None:...
 
 
 
-if __name__ == '__main__':
 
-    m = ViewModelMediator()
-    class test:
-        def __init__(self, m:ViewModelMediator):
-            m.register('777', self.rrr)
 
-        @isHandler()
-        def rrr(self):
-            print(self)
 
-    t1 = test(m)
-    t2 = test(m)
-    t3 = test(m)
 
-    m.trigger('777')
-
-    del t1
-    print('')
-    gc.collect()
-    m.trigger('777')
-    print('')
 
 
 
